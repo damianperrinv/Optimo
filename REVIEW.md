@@ -1,6 +1,6 @@
-# Optimo hybrid prototype review
+# Optimo module review · V53 + r7
 
-The updated prototype preserves the full event/resource and facility workflows and brings their themes and concepts together.
+This revision follows the re-uploaded **prototypev53.html**, **optimo-operations-r7.html** and your detailed expectations. Events and Resources use V53; Facilities uses r7. The facilities theme and booking vocabulary apply across the workspace.
 
 ## Open the prototype
 
@@ -8,23 +8,23 @@ The updated prototype preserves the full event/resource and facility workflows a
 2. Extract the ZIP.
 3. Open `Optimo-hybrid/optimo-full-hybrid.html` in Chrome or Edge.
 
-The HTML contains both complete prototypes and the revised workspace. No server, installation, internet connection or original-file selection is required. GitHub shows HTML as source; download and open it locally to interact.
+The standalone HTML needs no server, installation, internet connection or original-file selection. GitHub displays HTML as source; download and open the extracted file to interact.
 
-## Revised flow
+## Changes to try
 
-- Dashboard shows readiness, schedule issues, draft changes and follow-up actions.
-- Events uses Calendar/List with independent date scope and consistent occurrence records.
-- Resource reassignment starts with a work period and keeps individual dates through review.
-- Facilities supports Day/Week independently of Calendar/List.
-- Public event, Private booking and Block colours stay consistent; recurrence, confirmation, publication and operational readiness remain separate.
-- Action centre identifies the next action for each issue, plan or follow-up.
+- **Dashboard:** assess readiness and open the exact issue, draft, follow-up or saved disruption case.
+- **Events:** copy sessions with date/time patterns; resolve copied supply conflicts; move complete sessions on a calendar; retain detailed V53 assignment and booking rescheduling.
+- **Private bookings:** switch between the selected day and the whole booking; inspect package allocations; move selected slots, a day's work or matching packages across dates; replace supply.
+- **Resources:** choose an absence period and independent remove/block options; review actual cover and remaining work; reopen saved cases after reload; reassign dated work or transfer a movable resource temporarily.
+- **Facilities:** move across dates, retain scope/linked allocation choices, review pricing and optional notification, and track closures. Deferred decisions stay internal; customer acceptance and expiring holds are removed.
+- **Audit log:** search changes, inspect scope and before/after values, and export the complete history.
 
 ## Included
 
-- `review/optimo-full-hybrid.html`: standalone interactive prototype.
-- `review/design-decisions.md`: rationale and integration boundary.
-- `review/scenario-review.md`: 30 browser scenarios, 43 unit/source checks and verification limits.
-- `review/v53-v56-feature-inventory.md`: event/resource capability inventory.
-- `review/r7-feature-inventory.md`: facility/planning capability inventory.
+- `review/optimo-full-hybrid.html`: interactive standalone prototype.
+- `review/design-decisions.md`: workflow and integration decisions.
+- `review/requirements-coverage.md`: mapping to your expectations.
+- `review/scenario-review.md`: executed checks and verification limits.
+- `review/requirements-results.json`: expectation scenario results.
 
-Project source, development commands and reusable setup instructions are in the repository. The reference datasets remain separate, and some source endpoints are simulations; this is an interaction prototype rather than a live booking system.
+Changes and audit records persist in the same browser. The reference datasets remain separate. Notification delivery, payments, production permissions and backend package creation are integration boundaries; the public facility move records a clearly labelled local transaction simulation. Original V56 inventories remain historical reference documents in the repository.

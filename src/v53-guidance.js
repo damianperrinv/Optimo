@@ -30,8 +30,9 @@
   // Capture its reference date once; changing the displayed date must not move it.
   const referenceDay=document.querySelector('#eventDateField input')?.value||allSessions().find(s=>s.date)?.date||'2026-08-24';
   const privateReferenceDays=new Map(allPrivates().map(p=>[p.id,p.date||referenceDay]));
+  const referenceSessionIds=new Set(allSessions().map(s=>s.id));
   const eventPresentation={view:'calendar',grouping:'facility',scope:'day',from:referenceDay,to:referenceDay};
-  let reassignScope=null,activePublicSessionId=null;
+  let reassignScope=null,activePublicSessionId=null,operationsAdapter=null;
   const native={renderEvent:window.renderEvent,eventCalendar:window.eventCalendarHtml,periodRows:window.v49PeriodRows,daySources:window.v49DaySources,sessionForKey:window.v52SessionForKey,inspector:window.v54InspectorHTML,openSession:window.openSession,openReassign:window.v48OpenReassign,renderReassign:window.v50RenderReassign,reassignCoverage:window.v50ReassignCoverage,togglePublic:window.v49TogglePublic,togglePrivate:window.v49TogglePrivate};
   function canonical(record,family){
     const model=window.OptimoBookingModel;
@@ -46,7 +47,7 @@
   function knownPeriodRows(){return safe(()=>typeof window.v48PeriodRows==='function'?window.v48PeriodRows():[])||[];}
   function privateDates(id){return [...new Set([allPrivates().find(p=>p.id===id)?.date||privateReferenceDays.get(id),...knownPeriodRows().filter(row=>row.private&&row.sourceId===id&&row.iso).map(row=>row.iso)].filter(Boolean))].sort();}
   const dateLabel=iso=>new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
-  function occurrenceRows({filtered=false,preliminary=true}={}){
+  function occurrenceRows({filtered=false,preliminary=true,raw=false}={}){
     const rows=new Map();
     function put(source,date,isPrivate,overrides={},origin='dated-source'){
       if(!source||!/^\d{4}-\d{2}-\d{2}$/.test(date||''))return;
@@ -66,8 +67,9 @@
     allPrivates().filter(p=>p.status==='confirmed'||p.status==='provisional').forEach(p=>put(p,p.date||privateReferenceDays.get(p.id),true,{},p.date?'dated-source':'reference-day'));
     // Preserve the upload's explicit future operating-date / unrostered case.
     const future=safe(()=>typeof v50UnrosteredDate!=='undefined'?v50UnrosteredDate:null);
-    if(future)allSessions().forEach(s=>put(s,future,false,s.preliminary?{}:{status:'notassigned',assigned:0,detail:'Roster/resource assignment has not yet been completed for this future operating date.'},'unrostered-scenario'));
-    return [...rows.values()].filter(row=>{
+    if(future)allSessions().filter(s=>referenceSessionIds.has(s.id)).forEach(s=>put(s,future,false,s.preliminary?{}:{status:'notassigned',assigned:0,detail:'Roster/resource assignment has not yet been completed for this future operating date.'},'unrostered-scenario'));
+    const projected=!raw&&operationsAdapter?.projectOccurrences?operationsAdapter.projectOccurrences([...rows.values()]):[...rows.values()];
+    return projected.filter(row=>{
       if(row.preliminary&&!preliminary)return false;
       if(!filtered)return true;
       const source=row.private?allPrivates().find(p=>p.id===row.sourceId):allSessions().find(s=>s.id===row.sourceId);
@@ -76,12 +78,12 @@
   }
   function occurrenceRecord(row){
     const source=row.private?allPrivates().find(p=>p.id===row.sourceId):allSessions().find(s=>s.id===row.sourceId);
-    return {...source,date:row.iso,time:row.time,venue:row.venue,assigned:row.assigned,status:row.status,detail:row.detail,preliminary:row.preliminary,__occurrenceKey:row.key};
+    return {...source,date:row.iso,time:row.time,venue:row.venue,facility:row.facility||source?.facility,activity:row.private?source?.activity:row.name,name:row.private?row.name:source?.name,recurrence:row.recurrence||source?.recurrence,resources:row.resources||source?.resources,linkedSupply:row.linkedSupply||source?.linkedSupply,att:row.att,bookings:row.bookings,assigned:row.assigned,attention:row.attention,status:row.status,detail:row.detail,preliminary:row.preliminary,__occurrenceKey:row.key};
   }
   function occurrenceSnapshot(row){return {id:row.key,key:row.key,sourceId:row.sourceId,iso:row.iso,date:row.iso,time:row.time,name:row.name,venue:row.venue,facility:row.facility,private:row.private,preliminary:row.preliminary,attendees:Number(row.att||0),att:Number(row.att||0),assigned:Number(row.assigned||0),status:row.status,attention:row.attention,detail:row.detail,origin:row.origin,canonical:canonical(occurrenceRecord(row),row.private?'private':'public')};}
   function projectedSession(id,render){
-    const [sourceId,date]=String(id).split('@'),index=allSessions().findIndex(s=>s.id===sourceId),source=allSessions()[index];
-    const row=date?occurrenceRows().find(item=>!item.private&&item.sourceId===sourceId&&item.iso===date):null;
+    const [sourceId,datePart]=String(id).split('@'),date=datePart?.slice(0,10),index=allSessions().findIndex(s=>s.id===sourceId),source=allSessions()[index];
+    const row=date?(occurrenceRows().find(item=>!item.private&&item.key===String(id))||occurrenceRows().find(item=>!item.private&&item.sourceId===sourceId&&item.iso===date)):null;
     if(!source||!row)return render(sourceId);
     // Render an occurrence without changing the source fixture or retaining a
     // synthetic date on it. Every original drawer function still runs.
@@ -140,14 +142,14 @@
       resource: v48ImpactContext.name,
       items: (v48ImpactContext.items || []).map(item => ({id:item.id || item.key || null,date:item.date || item.iso || null,title:item.title || item.name || null})),
     } : null);
-    const sessionChoices = allSessions().map(s => ({
+    const sessionChoices = allSessions().map(base => {const s=operationsAdapter?.sessionRecord?.(base)||base;return ({
       id:s.id,label:publicLabel(s),name:s.activity,date:s.date || null,time:s.time,venue:s.venue,
       attendees:Number(s.att || 0),assigned:Number(s.assigned || 0),preliminary:!!s.preliminary,
       status:s.status,detail:s.detail || '',canonical:canonical(s,'public'),
       provisional:canonical(s,'public').confirmation==='provisional',confirmOnFirstBooking:canonical(s,'public').confirmOnFirstBooking||false,
       ready:!s.preliminary&&Number(s.assigned||0)>=Number(s.att||0)&&!['attention','notassigned'].includes(s.status),
-    }));
-    const privateChoices = allPrivates().map(p => ({id:p.id,label:privateLabel(p),name:p.name,ref:p.ref,venue:p.venue,time:p.time,customer:p.customer,attention:!!p.attention,date:p.date||privateReferenceDays.get(p.id)||null,dates:privateDates(p.id),dateBasis:p.date?'Explicit source date':'Initial day diary reference',canonical:canonical(p,'private')}));
+    });});
+    const privateChoices = allPrivates().map(base => {const p=operationsAdapter?.privateRecord?.(base)||base;return ({id:p.id,label:privateLabel(p),name:p.name,ref:p.ref,venue:p.venue,time:p.time,customer:p.customer,attention:!!p.attention,date:p.date||privateReferenceDays.get(p.id)||null,dates:p.dates||privateDates(p.id),dateBasis:p.date?'Explicit source date':'Initial day diary reference',canonical:canonical(p,'private')});});
     const datedOccurrences=occurrenceRows({preliminary:false}).map(occurrenceSnapshot);
     const resourceChoices = allResources().map(r => ({id:r.name,label:`${r.name} · ${r.venue} · ${r.human ? 'Person' : r.cat?.includes('Facilities') ? 'Facility' : 'Equipment'}`,name:r.name,venue:r.venue,human:!!r.human,movable:r.movable !== false,category:r.cat || ''}));
     return {
@@ -158,6 +160,8 @@
       layout:view === 'resources' ? safe(() => resourceView) : safe(() => dayLayout),
       sessions:sessionChoices,privates:privateChoices,resources:resourceChoices,
       referenceDay,occurrences:datedOccurrences,attentionOccurrences:datedOccurrences.filter(row=>row.attention),
+      operations:operationsAdapter?.snapshot?.()||null,
+      resourceOperations:operationsAdapter?.snapshot?.()?.resourceOperations||null,
       selectedPublic:publicSelection().length,selectedPrivate:privateSelection().length,
       selected:{public:publicSelection(),private:privateSelection(),resource:safe(() => selectedResource) || null},
       eventPresentation:{...eventPresentation},
@@ -167,7 +171,7 @@
       modal:{open:modalOpen,title:modalOpen ? text(byId('modalTitle')) : ''},
       outstanding:{public:sessionChoices.filter(s=>!s.preliminary&&s.attendees>s.assigned).length,private:privateChoices.filter(p=>p.attention).length,impactContext:impact,scope:'Current source-prototype arrays and selections; not a shared backend or r7 booking state.'},
       functionPresence:Object.fromEntries(entryPoints.map(name => [name,typeof window[name] === 'function'])),
-      sourceBehavior:{persistentFacilityCases:true,sharedBackend:false,notificationDelivery:false,rosterWorkbookParser:false,bulkAssignmentCommit:'Source result screen; full mutation is not implemented by the upload.'},
+      sourceBehavior:{persistentFacilityCases:true,sharedBackend:false,notificationDelivery:false,rosterWorkbookParser:false,operationalCommit:operationsAdapter?'Dated assignments, session copies/moves, booking moves, private allocations and resource cases commit to local prototype state.':'Original upload simulations; operational extensions are not loaded.',bulkAssignmentCommit:operationsAdapter?'Validated dated allocations persist locally with remaining operational cases and audit.':'Source result screen; full mutation is not implemented by the upload.',productionBackend:false},
     };
   }
 
@@ -245,15 +249,16 @@
   function navigate(id,args={}) {
     const aliases={sessionDetail:'session',privateDetail:'private',resourceDetail:'resource'};
     id=aliases[id] || id;
-    const catalog=workflowCatalog.find(item=>item.id===id);
+    const catalog=[...workflowCatalog,...(operationsAdapter?.catalog||[])].find(item=>item.id===id);
     if (!catalog) return {ok:false,error:'This operation is not in the workflow catalog.',snapshot:snapshot()};
     try {
+      if(operationsAdapter?.handles?.(id)){const result=operationsAdapter.navigate(id,args);updateOrientation();return {...result,snapshot:snapshot()};}
       if(id==='events') enterEvents(args);
       else if(id==='resources') enterResources(args);
-      else if(id==='session') {const key=resolveSession(args,true);const date=args.date||String(key).split('@')[1];enterEvents(date?{date,scope:'day'}:{});call('openSession',key);}
+      else if(id==='session') {const key=resolveSession(args,true);const date=args.date||String(key).split('@')[1]?.slice(0,10);enterEvents(date?{date,scope:'day'}:{});call('openSession',key);}
       else if(id==='assign') {const key=resolveSession(args);enterEvents();call('openAssignResource',key,!!args.optional);}
       else if(id==='capacity') {const key=resolveSession(args);enterEvents();call('v47OpenCapacity',key,args.supplyName || null);}
-      else if(id==='publicReschedule') {const key=resolveSession(args);enterEvents();call('openReschedulePublic',key);}
+      else if(id==='publicReschedule') {const key=resolveSession(args,true);const date=args.date||String(key).split('@')[1]?.slice(0,10);enterEvents(date?{date,scope:'day'}:{});call('openReschedulePublic',key);}
       else if(id==='createSessions') {const key=resolveSession(args);enterEvents();call('openCreateSession',key,!!args.fromReschedule);}
       else if(id==='bulkAssign') {selectPublic(args);enterEvents();call('v49AssignSelected');}
       else if(id==='bulkMove') {selectPublic(args);enterEvents();call('v32InitMoveBulk');call('openMoveSessionBulk');}
@@ -291,7 +296,7 @@
 
   function setEventPresentation(args={}){
     const next={...eventPresentation};
-    if(args.scope||args.mode)next.scope=(args.scope||args.mode)==='period'?'period':'day';
+    if(args.scope||args.mode){const scope=args.scope||args.mode;next.scope=['day','week','month'].includes(scope)?scope:'period';}
     if(args.view)next.view=args.view==='list'?'list':'calendar';
     else if(args.layout)next.view=args.layout==='list'?'list':'calendar';
     if(args.grouping)next.grouping=args.grouping==='time'?'time':'facility';
@@ -301,17 +306,19 @@
     if(args.to)next.to=args.to;
     else if(args.from||args.date)next.to=next.scope==='day'?next.from:next.to<next.from?next.from:next.to;
     if(next.scope==='day')next.to=next.from;
+    if(next.scope==='week'){const date=new Date(`${next.from}T12:00:00Z`);date.setUTCDate(date.getUTCDate()+6);next.to=date.toISOString().slice(0,10);}
+    if(next.scope==='month'){const date=new Date(`${next.from}T12:00:00Z`);next.from=`${next.from.slice(0,7)}-01`;next.to=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,0,12)).toISOString().slice(0,10);}
     if(!/^\d{4}-\d{2}-\d{2}$/.test(next.from)||!/^\d{4}-\d{2}-\d{2}$/.test(next.to)||next.to<next.from)throw new Error('Choose a valid date range with the end on or after the start.');
     Object.assign(eventPresentation,next);
-    safe(()=>{eventMode=next.scope;dayLayout=next.view==='list'?'list':next.grouping==='facility'?'timeline':'calendar';});
+    safe(()=>{eventMode=next.scope==='day'?'day':'period';dayLayout=next.view==='list'?'list':next.grouping==='facility'&&native.inspector?'timeline':'calendar';});
     const date=document.querySelector('#eventDateField input[type="date"]');if(date)date.value=next.from;
-    if(typeof window.setEventMode==='function')window.setEventMode(next.scope);else window.renderEvent();
+    if(typeof window.setEventMode==='function')window.setEventMode(next.scope==='day'?'day':'period');else window.renderEvent();
     return snapshot();
   }
 
   function eventControlHTML(){
     const state=eventPresentation;
-    return `<div class="hybrid-presentation-segment" aria-label="Event display"><button type="button" data-hybrid-event-view="calendar" class="${state.view==='calendar'?'on':''}" aria-pressed="${state.view==='calendar'}">Calendar</button><button type="button" data-hybrid-event-view="list" class="${state.view==='list'?'on':''}" aria-pressed="${state.view==='list'}">List</button></div><label class="hybrid-inline-field">Date scope<select id="hybridEventScope" aria-label="Event date scope"><option value="day" ${state.scope==='day'?'selected':''}>Day</option><option value="period" ${state.scope==='period'?'selected':''}>Date range</option></select></label><label class="hybrid-inline-field">${state.scope==='day'?'Date':'From'}<input id="hybridEventFrom" aria-label="Event start date" type="date" value="${state.from}"></label>${state.scope==='period'?`<label class="hybrid-inline-field">Through<input id="hybridEventTo" aria-label="Event end date" type="date" value="${state.to}"></label>`:''}${state.view==='calendar'&&state.scope==='day'?`<label class="hybrid-inline-field">Group calendar by<select id="hybridEventGrouping" aria-label="Calendar grouping"><option value="facility" ${state.grouping==='facility'?'selected':''}>Venue & facility</option><option value="time" ${state.grouping==='time'?'selected':''}>Sessions & time</option></select></label>`:''}`;
+    return `<div class="hybrid-presentation-segment" aria-label="Event display"><button type="button" data-hybrid-event-view="calendar" class="${state.view==='calendar'?'on':''}" aria-pressed="${state.view==='calendar'}">Calendar</button><button type="button" data-hybrid-event-view="list" class="${state.view==='list'?'on':''}" aria-pressed="${state.view==='list'}">List</button></div><label class="hybrid-inline-field">Date scope<select id="hybridEventScope" aria-label="Event date scope"><option value="day" ${state.scope==='day'?'selected':''}>Day</option><option value="week" ${state.scope==='week'?'selected':''}>Week</option><option value="month" ${state.scope==='month'?'selected':''}>Month</option><option value="period" ${state.scope==='period'?'selected':''}>Custom</option></select></label><label class="hybrid-inline-field">${state.scope==='day'?'Date':'From'}<input id="hybridEventFrom" aria-label="Event start date" type="date" value="${state.from}"></label>${state.scope!=='day'?`<label class="hybrid-inline-field">Through<input id="hybridEventTo" aria-label="Event end date" type="date" value="${state.to}"></label>`:''}${state.view==='calendar'&&state.scope==='day'&&native.inspector?`<label class="hybrid-inline-field">Group calendar by<select id="hybridEventGrouping" aria-label="Calendar grouping"><option value="facility" ${state.grouping==='facility'?'selected':''}>Venue & facility</option><option value="time" ${state.grouping==='time'?'selected':''}>Sessions & time</option></select></label>`:''}`;
   }
 
   function periodCalendar(rows){
@@ -330,29 +337,29 @@
       });
       return {date,items,lanes:Math.max(1,ends.length)};
     });
-    return `<div class="hybrid-period-calendar-scroll"><div class="hybrid-period-calendar" style="min-width:${days.reduce((sum,day)=>sum+Math.max(210,day.lanes*155+35),0)}px;grid-template-columns:${days.map(day=>`minmax(${Math.max(210,day.lanes*155+35)}px,1fr)`).join(' ')}">${days.map(day=>`<section class="hybrid-period-day" data-date="${day.date}"><header>${escapeHTML(day.date)}<small>${day.items.length} occurrences · time calendar</small></header><div class="hybrid-period-day-track" style="height:${(last-first)/60*scale}px;--hybrid-hour:${scale}px">${Array.from({length:(last-first)/60+1},(_,index)=>first/60+index).filter(hour=>hour%2===0).map(hour=>`<span class="hybrid-period-hour" style="top:${(hour*60-first)/60*scale}px">${String(hour).padStart(2,'0')}:00</span>`).join('')}${day.items.map(({row,start,end,lane})=>{
+    return `<div class="hybrid-period-calendar-scroll"><div class="hybrid-period-calendar" style="min-width:${days.reduce((sum,day)=>sum+Math.max(210,day.lanes*155+35),0)}px;grid-template-columns:${days.map(day=>`minmax(${Math.max(210,day.lanes*155+35)}px,1fr)`).join(' ')}">${days.map(day=>`<section class="hybrid-period-day" data-date="${day.date}"><header>${escapeHTML(day.date)}<small>${day.items.length} occurrences · time calendar</small></header><div class="hybrid-period-day-track" data-start-minute="${first}" style="height:${(last-first)/60*scale}px;--hybrid-hour:${scale}px">${Array.from({length:(last-first)/60+1},(_,index)=>first/60+index).filter(hour=>hour%2===0).map(hour=>`<span class="hybrid-period-hour" style="top:${(hour*60-first)/60*scale}px">${String(hour).padStart(2,'0')}:00</span>`).join('')}${day.items.map(({row,start,end,lane})=>{
       const source=row.private?allPrivates().find(p=>p.id===row.sourceId):allSessions().find(s=>s.id===row.sourceId);if(!source)return '';
-      const model=canonical(source,row.private?'private':'public'),key=row.key||`${row.sourceId}@${day.date}`,height=Math.max(22,(end-start)/60*scale-4),left=lane/day.lanes*100,width=100/day.lanes;
+      const model=canonical(occurrenceRecord(row),row.private?'private':'public'),key=row.key||`${row.sourceId}@${day.date}`,height=Math.max(22,(end-start)/60*scale-4),left=lane/day.lanes*100,width=100/day.lanes;
       return `<article class="hybrid-period-occurrence ${height<75?'compact':''}" data-family="${model.family}" data-confirmation="${model.confirmation}" data-publication="${model.publication}" data-occurrence-key="${escapeHTML(key)}" data-lane="${lane}" style="top:${(start-first)/60*scale}px;height:${height}px;left:calc(${left}% + ${30*(1-lane/day.lanes)}px);width:calc(${width}% - ${35/day.lanes+4}px)"><label class="hybrid-occurrence-check"><input type="checkbox" aria-label="Select ${escapeHTML(row.name)} on ${day.date}" data-hybrid-occurrence="${escapeHTML(key)}" data-kind="${row.private?'private':'public'}" ${(row.private?privateSelection():publicSelection()).includes(key)?'checked':''}></label><button type="button" data-hybrid-open="${row.private?'private':'session'}" data-id="${row.sourceId}" data-occurrence-key="${escapeHTML(key)}" title="${escapeHTML(row.name)} · ${escapeHTML(row.time)} · ${escapeHTML(row.venue)} · ${model.label}${model.recurrence?' · '+model.recurrence:''} · ${model.confirmation}"><strong>${escapeHTML(row.name)}</strong><span>${escapeHTML(row.time)}</span><small>${escapeHTML(row.venue)} · ${escapeHTML(row.facility||source.facility||'')}</small>${semanticBadges(model)}${row.attention?'<em class="hybrid-attention-label">Needs attention</em>':''}</button></article>`;
     }).join('')}</div></section>`).join('')}</div></div>`;
   }
 
   function renderEventPresentation(){
     const mode=safe(()=>eventMode)||eventPresentation.scope;
-    eventPresentation.scope=mode==='period'?'period':'day';
+    eventPresentation.scope=mode==='period'?(eventPresentation.scope==='day'?'period':eventPresentation.scope):'day';
     const date=document.querySelector('#eventDateField input[type="date"]')?.value;
     if(date&&eventPresentation.scope==='day')eventPresentation.from=eventPresentation.to=date;
-    safe(()=>{dayLayout=eventPresentation.view==='list'?'list':eventPresentation.grouping==='facility'?'timeline':'calendar';});
+    safe(()=>{dayLayout=eventPresentation.view==='list'?'list':eventPresentation.grouping==='facility'&&native.inspector?'timeline':'calendar';});
     native.renderEvent?.();
     const screen=byId('screen-event');if(!screen)return;
     screen.classList.toggle('hybrid-events-calendar',eventPresentation.view==='calendar');
     screen.classList.toggle('hybrid-events-list',eventPresentation.view==='list');
-    screen.classList.toggle('hybrid-events-period',eventPresentation.scope==='period');
+    screen.classList.toggle('hybrid-events-period',eventPresentation.scope!=='day');
     let controls=byId('hybridEventPresentation');
     if(!controls){controls=document.createElement('section');controls.id='hybridEventPresentation';controls.setAttribute('aria-label','Event presentation and date scope');screen.querySelector('.pghead')?.after(controls);}
     controls.innerHTML=eventControlHTML();
     byId('hybridPeriodCalendar')?.remove();
-    if(eventPresentation.scope==='period'){
+    if(eventPresentation.scope!=='day'){
       const rows=window.v49PeriodRows(),host=byId('eventPeriodContent');
       if(host){
         const summary=host.querySelector('.v49-event-kpis');
@@ -365,7 +372,7 @@
         }
       }
     }
-    if(eventPresentation.scope==='period'&&eventPresentation.view==='calendar'){
+    if(eventPresentation.scope!=='day'&&eventPresentation.view==='calendar'){
       const host=byId('eventPeriodContent');if(host){const calendar=document.createElement('div');calendar.id='hybridPeriodCalendar';calendar.innerHTML=periodCalendar(window.v49PeriodRows());host.append(calendar);}
     }
     decorateSemantics();
@@ -491,7 +498,7 @@
   }
 
   function installAdapters(){
-    if(typeof native.periodRows==='function')window.v49PeriodRows=function(){return occurrenceRows({filtered:true,preliminary:!!safe(()=>v48ShowPreliminary)}).filter(row=>eventPresentation.scope!=='period'||(row.iso>=eventPresentation.from&&row.iso<=eventPresentation.to));};
+    if(typeof native.periodRows==='function')window.v49PeriodRows=function(){return occurrenceRows({filtered:true,preliminary:!!safe(()=>v48ShowPreliminary)}).filter(row=>eventPresentation.scope==='day'||(row.iso>=eventPresentation.from&&row.iso<=eventPresentation.to));};
     if(typeof native.daySources==='function')window.v49DaySources=function(){const iso=document.querySelector('#eventDateField input')?.value||eventPresentation.from,rows=occurrenceRows({filtered:true,preliminary:!!safe(()=>v48ShowPreliminary)}).filter(row=>row.iso===iso);return {ss:rows.filter(row=>!row.private).map(occurrenceRecord),pp:rows.filter(row=>row.private).map(occurrenceRecord)};};
     if(typeof native.sessionForKey==='function')window.v52SessionForKey=function(key){const row=occurrenceRows().find(item=>!item.private&&item.key===String(key));return row?{...occurrenceRecord(row),id:row.key,__baseId:row.sourceId,__instanceDate:row.iso}:native.sessionForKey(key);};
     if(typeof native.eventCalendar==='function')window.eventCalendarHtml=function(){return periodCalendar(occurrenceRows({filtered:true,preliminary:!!safe(()=>v48ShowPreliminary)}).filter(row=>row.iso===eventPresentation.from));};
@@ -564,7 +571,12 @@
     updateOrientation();
     return canonical(session,'public');
   }
-  window.OptimoV53Guide=Object.freeze({snapshot,navigate,workflowCatalog,setEventPresentation,setConfirmationPolicy});
+  window.OptimoV53Guide=Object.freeze({snapshot,navigate,get workflowCatalog(){return [...workflowCatalog,...(operationsAdapter?.catalog||[])];},setEventPresentation,setConfirmationPolicy,
+    registerOperations(adapter){operationsAdapter=adapter;renderEventPresentation();updateOrientation();},
+    rawOccurrences(){return occurrenceRows({raw:true});},
+    sourceRecords(){return {sessions:allSessions(),privates:allPrivates(),resources:allResources()};},
+    refresh(){renderEventPresentation();safe(()=>window.renderResource());updateOrientation();}
+  });
   document.addEventListener('click',event=>{
     const view=event.target.closest('[data-hybrid-event-view]');
     if(view){event.preventDefault();setEventPresentation({view:view.dataset.hybridEventView});return;}

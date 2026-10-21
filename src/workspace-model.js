@@ -6,7 +6,7 @@ const date=value=>/^\d{4}-\d{2}-\d{2}$/.test(value||'')?value:null;
 const unique=rows=>[...new Map(rows.map(row=>[row.id,row])).values()];
 export function buildWorkQueue(v={},r={},ready={v53:false,r7:false},scope={}) {
   const matches=record=>!record.date||(!scope.from||(record.endDate||record.date)>=scope.from)&&(!scope.to||record.date<=scope.to);
-  const issues=[],drafts=[],followUps=[];
+  const issues=[],drafts=[],followUps=[],cases=[];
   if(ready.v53){
     list(v.sessions).filter(s=>!s.preliminary&&(n(s.attendees)>n(s.assigned)||['attention','notassigned'].includes(s.status))).forEach(s=>issues.push({id:'v53-public-'+s.id,source:'v53',area:'Events',title:s.name,detail:n(s.attendees)>n(s.assigned)?`${n(s.attendees)-n(s.assigned)} guest places still need resource cover`:s.detail||'Review this event’s space and resource requirements',date:date(s.date),time:s.time,venue:s.venue,family:'public',action:n(s.attendees)>n(s.assigned)?'assign':'session',args:{id:s.id},actionLabel:n(s.attendees)>n(s.assigned)?'Arrange cover':'Review event',status:n(s.attendees)>n(s.assigned)?'Needs cover':'Needs a decision'}));
     list(v.privates).filter(p=>p.attention).forEach(p=>issues.push({id:'v53-private-'+p.id,source:'v53',area:'Events',title:p.name,detail:p.attentionReason||'Review the booking’s space and resource requirements',date:date(p.date),time:p.time,venue:p.venue,family:'private',action:'private',args:{id:p.id},actionLabel:'Resolve booking',status:'Needs a decision'}));
@@ -20,6 +20,10 @@ export function buildWorkQueue(v={},r={},ready={v53:false,r7:false},scope={}) {
       issues.push({id:'v53-occurrence-'+key,source:'v53',area:'Events',title:item.name||item.title,detail:item.detail||item.reason||(gap?`${gap} guest places still need resource cover`:'Review this scheduled occurrence'),date:at,time:item.time,venue:item.venue,family:privateWork?'private':'public',action:privateWork?'private':gap?'bulkAssign':'session',args:privateWork?{id:sourceId,date:at}:gap?{ids:[key]}:{id:key,date:at},actionLabel:privateWork?'Resolve booking':gap?'Arrange cover':'Review event',status:gap?'Needs cover':'Needs a decision'});
     });
 
+    list(v.operations?.followUps).filter(item=>!['completed','closed','resolved'].includes(item.status)).forEach(item=>followUps.push({id:'v53-followup-'+item.id,source:'v53',area:'Events',title:item.bookingRef||item.title||'Booking follow-up',detail:item.reason||item.notes||item.type||'Complete the Booking Manager action',date:date(item.date),family:item.family||'public',action:'bookingFollowUp',args:{id:item.id},actionLabel:'Open follow-up',status:'Booking Manager action'}));
+    list(v.operations?.cases).forEach(item=>cases.push({id:'v53-case-'+item.id,source:'v53',area:'Events',title:item.title||'Event change',detail:`${n(item.remaining)} items still need review`,date:date(item.date||item.scope?.dates?.[0]||item.items?.[0]?.date),family:'internal',action:'operationCase',args:{id:item.id},actionLabel:'Open case',status:n(item.remaining)?'Action needed':'Resolved',remaining:n(item.remaining)}));
+    list(v.resourceOperations?.cases||v.operations?.resourceOperations?.cases).forEach(item=>cases.push({id:'resource-case-'+item.id,source:'v53',area:'Resources',title:item.resource||item.title||'Resource availability change',detail:`${item.reason||'Resource change'} · ${list(item.outstanding).length} affected items still need action`,date:date(String(item.from||'').slice(0,10)),endDate:date(String(item.to||'').slice(0,10)),family:'internal',action:'resourceCase',args:{id:item.id},actionLabel:'Open case',status:list(item.outstanding).length?'Action needed':'Resolved',remaining:list(item.outstanding).length}));
+
   }
   if(ready.r7){
     list(r.followUp?.eventAttention?.items).forEach(s=>issues.push({id:'r7-issue-'+s.key,source:'r7',area:'Events',title:s.title,detail:s.reason,date:date(s.date),time:s.start,venue:s.venueName||s.venue,family:s.kind==='private'?'private':'public',action:'attention',args:{key:s.key,kind:s.kind,booking:s.booking},actionLabel:'Resolve booking',status:'Needs a decision'}));
@@ -30,10 +34,15 @@ export function buildWorkQueue(v={},r={},ready={v53:false,r7:false},scope={}) {
     list(r.followUp?.facilities?.flags).filter(f=>!f.status||f.status==='open').forEach((f,i)=>followUps.push({id:'facility-followup-'+(f.id||i),source:'r7',area:'Facilities',title:f.bookingName||f.name||f.bookingId||'Booking follow-up',detail:f.text||f.reason||f.short||'Finish the outstanding booking action',date:date(f.date),family:f.family||((f.kind==='public'||f.kind==='session'||f.tone==='session')?'public':(f.kind==='private'||['season','casual','hire'].includes(f.tone))?'private':'internal'),action:'followUp',args:{kind:'facility',id:f.id,bookingId:f.bookingId,cid:f.closureId},actionLabel:'Finish action',status:f.short||'Follow-up'}));
     list(r.followUp?.operations?.rows).forEach((f,i)=>followUps.push({id:'operations-followup-'+(f.id||f.flagId||i),source:'r7',area:'Events & resources',title:f.title||f.booking||f.bookingId||f.name||'Booking follow-up',detail:f.text||f.reason||f.short||'Finish the outstanding booking action',date:date(f.date),family:f.family||(f.kind==='private'?'private':'public'),action:'followUp',args:{kind:'operations',id:f.id||f.flagId,bookingId:f.bookingId||f.booking,key:f.key},actionLabel:'Finish action',status:f.short||'Follow-up'}));
   }
+  if(ready.r7){
+    list(r.facilityExtensions?.internalTasks).filter(item=>item.status==='open').forEach(item=>issues.push({id:'facility-internal-'+item.id,source:'r7',area:'Facilities',title:item.title||'Allocation decision',detail:item.text||'Arrange an alternative allocation internally',date:date(item.date),family:item.family||list(r.workItems).find(work=>work.id===item.id)?.family||'internal',action:'internalTask',args:{id:item.id},actionLabel:'Resolve allocation',status:'Allocation needed'}));
+    list(r.facilityExtensions?.closureTracking).forEach(item=>cases.push({id:'facility-tracking-'+item.id,source:'r7',area:'Facilities',title:item.title,detail:`${item.decided||0} of ${item.total||0} affected bookings decided · ${item.followUps||0} follow-ups`,date:date(item.date),endDate:date(item.endDate),family:item.mode==='clear'?'internal':'block',action:'closureCase',args:{cid:item.id},actionLabel:'Open case',status:item.status,remaining:Math.max(0,n(item.total)-n(item.decided))+list(item.internal).length+n(item.followUps)}));
+  }
+
   const sort=rows=>unique(rows).filter(matches).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999')||(a.time||'').localeCompare(b.time||'')||a.title.localeCompare(b.title));
   const provisional=ready.v53?list(v.sessions).filter(s=>matches(s)&&(s.canonical||model.publicEvent(s)).confirmation==='provisional').length:0;
-  const result={issues:sort(issues),drafts:sort(drafts),followUps:sort(followUps),provisional,loaded:n(ready.v53)+n(ready.r7),complete:!!(ready.v53&&ready.r7)};
+  const result={issues:sort(issues),drafts:sort(drafts),followUps:sort(followUps),cases:sort(cases),openCases:sort(cases).filter(item=>item.remaining>0||item.status==='Planning').length,provisional,loaded:n(ready.v53)+n(ready.r7),complete:!!(ready.v53&&ready.r7)};
   result.blocked=result.drafts.filter(d=>d.blocked).length;
-  result.clear=result.complete&&!result.issues.length&&!result.drafts.length&&!result.followUps.length;
+  result.clear=result.complete&&!result.issues.length&&!result.drafts.length&&!result.followUps.length&&!result.openCases;
   return result;
 }

@@ -1,0 +1,66 @@
+[
+  {
+    "name": "Actual V53 source, preferred module routes and no invented startup audit",
+    "result": "Pass"
+  },
+  {
+    "name": "Saleable capacity ignores unrostered requirements and later roster shortfall is two places",
+    "result": "Pass"
+  },
+  {
+    "name": "Capacity changes stay on the selected occurrence or matching later work that day",
+    "result": "Pass"
+  },
+  {
+    "name": "Pattern copy creates four empty-booking sessions, calendar rows, persistence and audit",
+    "result": "Pass"
+  },
+  {
+    "name": "Copy refuses unresolved supply conflicts without creating partial sessions",
+    "result": "Pass"
+  },
+  {
+    "name": "Calendar drop moves all session bookings and preserves occurrence usage with audit",
+    "result": "Pass"
+  },
+  {
+    "name": "Private package dates, whole-booking view and series moves preserve weekly spacing",
+    "result": "Pass"
+  },
+  {
+    "name": "Resource absence options create persistent real impacts, blocks and audit",
+    "result": "Pass"
+  },
+  {
+    "name": "Permanent unavailability is required for inactivation; blocks and slots are independent",
+    "result": "Pass"
+  },
+  {
+    "name": "Facility day-scope cross-date changes Apply and Undo atomically",
+    "result": "Pass"
+  },
+  {
+    "name": "Public facility move records target slot/package transaction at unchanged price and supports Undo",
+    "result": "Pass"
+  },
+  {
+    "name": "Deferred facility work stays internal with no customer waiting/hold workflow",
+    "result": "Pass"
+  },
+  {
+    "name": "Keep-price permission rejects unapproved moves before allocation mutation",
+    "result": "Pass"
+  },
+  {
+    "name": "Monthly pricing and linked utilisation leave only relevant Booking Manager actions",
+    "result": "Pass"
+  },
+  {
+    "name": "Replacement skills are validated before Apply and saved-work task directories open safely",
+    "result": "Pass"
+  },
+  {
+    "name": "Audit UI searches actual cross-module changes and exports complete persistent history",
+    "result": "Pass"
+  }
+]

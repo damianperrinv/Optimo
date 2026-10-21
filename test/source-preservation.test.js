@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import vm from 'node:vm';
 const root=new URL('../',import.meta.url);
 const sources={
-  v53:{path:'references/v53-v56.html',hash:'842713af937a3ddc5a33f25a62575c10d940925634ae7caba481b36fb224bebb',scripts:37},
+  v53:{path:'references/v53.html',hash:'d7c186066af9ed2bea2d865a67a347169c4f4d235f75f1e65270e8fc6cef4bc9',scripts:35},
   r7:{path:'references/r7.html',hash:'fef5843abad8414df8e59a374ad8c32e1c6cf788a3a8a7627843748e9af1c532',scripts:17}
 };
 const scripts=html=>[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]);

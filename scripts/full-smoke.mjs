@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import {buildWorkQueue} from "../src/workspace-model.js";
 
 const root = new URL("../", import.meta.url);
 const baseURL = process.env.OPTIMO_URL || "http://127.0.0.1:5173";
@@ -15,7 +16,7 @@ let scenarios = 0;
 const sources = Object.fromEntries(
   await Promise.all(
     [
-      ["v53", "references/v53-v56.html"],
+      ["v53", "references/v53.html"],
       ["r7", "references/r7.html"],
     ].map(async ([id, path]) => [
       id,
@@ -103,6 +104,8 @@ const panel = (frame) => frame.locator("#drawer");
 const goDashboard = (page) =>
   page.locator('.workspace-side [data-action="area"][data-id="home"]').click();
 const queue = (page) => page.evaluate(() => OptimoWorkspace.workQueue());
+// Retained r7 operations are regression-only; active Events/Resources use V53.
+const legacyQueue = async (page) => buildWorkQueue({}, await page.evaluate(() => OptimoWorkspace.snapshot("r7")), {v53:false,r7:true});
 
 try {
   await scenario(
@@ -110,7 +113,7 @@ try {
     async (page) => {
       const frames = await getFrames(page);
       for (const [id, count] of [
-        ["v53", 37],
+        ["v53", 35],
         ["r7", 17],
       ]) {
         const expected = originalScripts(id);
@@ -184,7 +187,15 @@ try {
           })
           .isVisible(),
       );
-      // Review is meaningful here; do not turn the source's result screen into a claim of a live backend commit.
+      await panel(v53).getByRole("button", {name: "Apply partial assignment", exact: true}).click();
+      const applied=await v53.evaluate(()=>({row:OptimoV53Operations.occurrences().find(row=>row.key==='s2@2026-08-24'),cases:OptimoV53Operations.snapshot().cases,audit:OptimoAudit.entries()}));
+      assert.equal(applied.row.assigned,4);
+      assert.equal(applied.row.att-applied.row.assigned,2);
+      assert(applied.cases.some(item=>item.kind==='assignment'&&item.remaining===1));
+      assert(applied.audit.some(item=>item.action==='Assign resources'));
+      await page.reload();
+      const restored=await getFrames(page);
+      assert.equal(await restored.v53.evaluate(()=>OptimoV53Operations.occurrences().find(row=>row.key==='s2@2026-08-24').assigned),4);
     },
   );
 
@@ -746,7 +757,7 @@ try {
             cid = d.ui.cid || "board",
             review = E.review(s, cid),
             before = s.history.length,
-            beforeFlags = E.flags(s).length,
+            beforeFlags = E.flags(s).filter(flag=>!['waiting','unconfirmed'].includes(flag.kind)).length,
             existingUndo = s.history
               .filter((record) => record.kind === "apply")
               .map((record) => E.canUndo(s, record.id)),
@@ -761,6 +772,7 @@ try {
             beforeFlags,
             existingUndo,
             flags: E.flags(s).length,
+            internal: (s.optimoExtensions?.internalTasks||[]).filter(task=>task.status==='open').length,
             undo: applied.historyId ? E.canUndo(s, applied.historyId) : null,
           });
         }
@@ -828,15 +840,17 @@ try {
           );
           assert.equal(row.disabled, false);
           assert.equal(row.applied.n, row.n === 12 ? 10 : 1);
-          assert.equal(row.flags, row.n === 12 ? 5 : 0);
+          assert.equal(row.flags, row.n === 12 ? 2 : 0);
           assert.equal(row.undo.ok, true);
         }
-        if ([13, 14].includes(row.n))
+        if ([13, 14].includes(row.n)) {
           assert.equal(
             row.beforeFlags,
-            5,
-            "Native after-states retain five unfinished facility tasks",
+            4,
+            "Financial/details follow-ups remain; customer waiting becomes a separate internal task",
           );
+          assert.equal(row.internal,1);
+        }
       }
       for (const row of result.operations) {
         assert.equal(typeof row.check.ok, "boolean");
@@ -902,9 +916,9 @@ try {
           ST.history.find((record) => record.kind === "apply").id,
         ),
       }));
-      assert.equal(status.flags, 5);
+      assert.equal(status.flags, 2);
       assert.equal(status.undo.ok, true);
-      assert.equal((await queue(page)).followUps.length, 5);
+      assert.equal((await queue(page)).followUps.length, 2);
       await r7.locator('[data-act="toastUndo"]').click();
       status = await r7.evaluate(() => ({
         view: UI.view,
@@ -925,50 +939,28 @@ try {
   );
 
   await scenario(
-    "Finishing a real facility credit refreshes the queue and blocks unsafe Undo",
+    "Finishing a facility fee refreshes the queue and blocks unsafe Undo",
     async (page) => {
-      const { r7 } = await getFrames(page);
-      await activate(page, "r7", "facilities");
-      await r7.evaluate(() => {
-        ACT.dmFrame({ n: 12 });
-        render();
-      });
+      const {r7}=await getFrames(page);
+      await activate(page,"r7","facilities");
+      await r7.evaluate(()=>{ACT.dmFrame({n:12});render();});
       await r7.locator('[data-act="rvApply"]').click();
-      const before = await queue(page);
-      assert.equal(before.followUps.length, 5);
-      const credit = before.followUps.find(
-        (item) => item.args.bookingId === "BK-30131",
-      );
-      assert(credit && credit.family === "private");
+      const before=await queue(page);
+      assert.equal(before.followUps.length,2,"Fixed seasonal pricing and removed customer acceptance leave only genuine follow-ups");
+      const fee=before.followUps.find(item=>item.args.bookingId==="BK-24077");
+      assert(fee&&fee.family==="private");
       await goDashboard(page);
       await page.locator('.metric-card[data-id="followUps"]').click();
-      await page
-        .locator(
-          `[data-queue="followUps"] [data-action="resume-work"][data-id="${credit.id}"]`,
-        )
-        .click();
-      assert.match(await r7.locator("body").innerText(), /Credit to give/);
-      // The native flag popover contains its full available actions; open the linked Booking Manager if needed.
-      if (await r7.evaluate(() => UI.view !== "bm"))
-        await r7.locator('button[data-act="bdBm"]').click();
-      assert.equal(await r7.evaluate(() => UI.view), "bm");
-      await r7.locator('[data-act="bmCredit"]').fill("-1");
+      await page.locator(`[data-queue="followUps"] [data-action="resume-work"][data-id="${fee.id}"]`).click();
+      assert.match(await r7.locator("body").innerText(),/Fee to update/);
+      if(await r7.evaluate(()=>UI.view!=="bm")) await r7.locator('button[data-act="bdBm"]').click();
       await r7.locator('[data-act="bmFinish"]').click();
-      assert.equal(
-        (await queue(page)).followUps.length,
-        5,
-        "A negative credit is rejected",
-      );
-      await r7.locator('[data-act="bmCredit"]').fill("120");
-      await r7.locator('[data-act="bmFinish"]').click();
-      const after = await queue(page);
-      assert.equal(after.followUps.length, 4);
-      assert(!after.followUps.some((item) => item.id === credit.id));
-      const undo = await r7.evaluate(() =>
-        E.canUndo(ST, ST.history.find((record) => record.kind === "apply").id),
-      );
-      assert.equal(undo.ok, false);
-      assert.match(undo.reason, /flag.*finished in Booking Manager/i);
+      const after=await queue(page);
+      assert.equal(after.followUps.length,1);
+      assert(!after.followUps.some(item=>item.id===fee.id));
+      const undo=await r7.evaluate(()=>E.canUndo(ST,ST.history.find(record=>record.kind==="apply").id));
+      assert.equal(undo.ok,false);
+      assert.match(undo.reason,/flag.*finished in Booking Manager/i);
     },
   );
 
@@ -989,24 +981,18 @@ try {
       }));
       assert.equal(status.pending, 0);
       assert.equal(status.flags, 2);
-      const fee = (await queue(page)).followUps.find(
+      const fee = (await legacyQueue(page)).followUps.find(
         (item) => item.args.bookingId === "BK-24156",
       );
       assert(fee);
-      await goDashboard(page);
-      await page.locator('.metric-card[data-id="followUps"]').click();
-      await page
-        .locator(
-          `[data-queue="followUps"] [data-action="resume-work"][data-id="${fee.id}"]`,
-        )
-        .click();
+      await activate(page,"r7",fee.action,fee.args);
       assert.equal(await r7.evaluate(() => UI.view), "opBm");
       assert.match(
         await r7.locator(".scr-opbm").innerText(),
         /Sven Olsen|BK-24156/,
       );
       await r7.locator('[data-act="opBmFinish"][data-flag-id="f1"]').click();
-      assert.equal((await queue(page)).followUps.length, 1);
+      assert.equal((await legacyQueue(page)).followUps.length, 1);
       await activate(page, "r7", "opHistory");
       await r7.locator(`[data-t="op-hs-undo-${status.record}"]`).click();
       status = await r7.evaluate(() => ({
@@ -1017,16 +1003,16 @@ try {
       assert.equal(status.flags.n, 1);
       assert.match(status.flags.rows[0].text, /Credit to give SAR 80/);
       assert(
-        (await queue(page)).drafts.some(
+        (await legacyQueue(page)).drafts.some(
           (item) => item.id === "operations-plan",
         ),
       );
       assert(
-        (await queue(page)).followUps.some((item) =>
+        (await legacyQueue(page)).followUps.some((item) =>
           /Credit to give SAR 80/.test(item.detail),
         ),
       );
-      const credit = (await queue(page)).followUps.find((item) =>
+      const credit = (await legacyQueue(page)).followUps.find((item) =>
         /Credit to give SAR 80/.test(item.detail),
       );
       await activate(page, "r7", credit.action, credit.args);
@@ -1037,23 +1023,23 @@ try {
       await amount.fill("-1");
       await finish.click();
       assert(
-        (await queue(page)).followUps.some((item) => item.id === credit.id),
+        (await legacyQueue(page)).followUps.some((item) => item.id === credit.id),
         "A negative credit cannot silently finish the original amount",
       );
       await amount.fill("");
       await finish.click();
       assert(
-        (await queue(page)).followUps.some((item) => item.id === credit.id),
+        (await legacyQueue(page)).followUps.some((item) => item.id === credit.id),
         "An explicitly blank credit remains unfinished",
       );
       await amount.fill("80");
       await finish.click();
       assert(
-        !(await queue(page)).followUps.some((item) => item.id === credit.id),
+        !(await legacyQueue(page)).followUps.some((item) => item.id === credit.id),
         "A valid completed credit clears its exact follow-up",
       );
       assert(
-        (await queue(page)).drafts.some(
+        (await legacyQueue(page)).drafts.some(
           (item) => item.id === "operations-plan",
         ),
         "Finishing money work does not erase restored draft decisions",
@@ -1064,7 +1050,7 @@ try {
   await scenario(
     "Action centre keyboard tabs work and task context keeps its owning workspace",
     async (page) => {
-      const { r7 } = await getFrames(page);
+      const { v53 } = await getFrames(page);
       await page.locator('.metric-card[data-id="issues"]').click();
       const first = page.locator('.queue-tabs [role="tab"][data-id="issues"]');
       await first.focus();
@@ -1090,7 +1076,7 @@ try {
         "issues",
       );
       const native = (await queue(page)).issues.find(
-        (item) => item.source === "r7",
+        (item) => item.source === "v53",
       );
       assert(native);
       await page
@@ -1098,7 +1084,7 @@ try {
           `[data-queue="issues"] [data-action="resume-work"][data-id="${native.id}"]`,
         )
         .click();
-      assert.equal(await r7.evaluate(() => UI.view), "evBoard");
+      assert.match(await panel(v53).innerText(), /Kayak|E-Foil|Private/);
       await page
         .locator('.workspace-side [data-action="area"][data-id="events"]')
         .click();
@@ -1108,16 +1094,16 @@ try {
           .evaluateAll(
             (frames) =>
               frames.find((frame) => !frame.hidden)?.contentWindow
-                ?.OptimoR7Guide != null,
+                ?.OptimoV53Guide != null,
           ),
         true,
-        "Events navigation retains the native planner which owns this issue",
+        "Events navigation uses the preferred V53 event workspace",
       );
     },
   );
 
   await scenario(
-    "Draft plan child actions resume the exact native resource disruption without duplicating plan counts",
+    "Retained legacy resource job routes preserve native decisions without entering the active queue",
     async (page) => {
       const { r7 } = await getFrames(page);
       await activate(page, "r7", "opResources");
@@ -1130,7 +1116,8 @@ try {
         decide: O.pending(OS).decide,
       }));
       await goDashboard(page);
-      const q = await queue(page);
+      const q = await legacyQueue(page);
+      assert.equal((await queue(page)).drafts.length,0,"The competing legacy r7 resource plan is excluded from active queues");
       assert.equal(q.drafts.length, 1);
       const plan = q.drafts.find((item) => item.id === "operations-plan"),
         job = plan?.children.find((item) => item.args.id === "j1");
@@ -1138,12 +1125,7 @@ try {
         job,
         "The aggregate operations draft offers the exact resource job",
       );
-      await page.locator('.metric-card[data-id="drafts"]').click();
-      const action = page.locator(
-        `#workspace-dialog [data-work-id="operations-plan"] [data-action="resume-work"][data-id="${job.id}"]`,
-      );
-      assert.match(await action.innerText(), /Continue Hassan|Sick leave/i);
-      await action.click();
+      await activate(page,"r7",job.action,job.args);
       assert.equal(await r7.evaluate(() => UI.view), "rsJob");
       assert.equal(await r7.evaluate(() => UI.rsjId), "j1");
       assert.equal(await page.locator("#crumb").innerText(), "Resources");
@@ -1168,15 +1150,14 @@ try {
         grouping: "facility",
         date: "2026-08-24",
       });
-      assert(await v53.locator("#hybridEventGrouping").isVisible());
-      await v53.locator("#hybridEventGrouping").selectOption("time");
+      assert.equal(await v53.locator("#hybridEventGrouping").count(),0,"Actual V53 uses the shared time calendar without V56 inspector grouping");
       await v53.locator('[data-hybrid-event-view="list"]').click();
       let state = await v53.evaluate(
         () => OptimoV53Guide.snapshot().eventPresentation,
       );
       assert.deepEqual(
         [state.view, state.scope, state.grouping],
-        ["list", "day", "time"],
+        ["list", "day", "facility"],
       );
       assert(await v53.locator("#screen-event.hybrid-events-list").isVisible());
       assert.equal(await v53.locator("#hybridEventGrouping").count(), 0);
@@ -1191,9 +1172,9 @@ try {
         [state.view, state.scope, state.from, state.to],
         ["calendar", "period", "2026-08-24", "2026-08-26"],
       );
-      assert.equal(await v53.locator(".hybrid-period-day").count(), 3);
+      assert.equal(await v53.locator("#eventPeriodContent .hybrid-period-day").count(), 3);
       const placement = await v53
-        .locator(".hybrid-period-occurrence")
+        .locator("#eventPeriodContent .hybrid-period-occurrence")
         .evaluateAll((nodes) =>
           nodes.map((node) => ({
             key: node.dataset.occurrenceKey,
@@ -1221,10 +1202,10 @@ try {
         "Occurrences are placed by time within each date",
       );
       for (const key of ["s1@2026-08-24", "s1@2026-08-25"])
-        await v53.locator(`[data-hybrid-occurrence="${key}"]`).check();
+        await v53.locator(`#eventPeriodContent [data-hybrid-occurrence="${key}"]`).check();
       await v53.locator('[data-hybrid-event-view="list"]').click();
       assert.equal(
-        await v53.locator(".hybrid-period-calendar").count(),
+        await v53.locator(".hybrid-period-calendar:visible").count(),
         0,
         "List is a separate presentation",
       );
@@ -1235,12 +1216,12 @@ try {
       await v53.locator('[data-hybrid-event-view="calendar"]').click();
       assert(
         await v53
-          .locator('[data-hybrid-occurrence="s1@2026-08-25"]')
+          .locator('#eventPeriodContent [data-hybrid-occurrence="s1@2026-08-25"]')
           .isChecked(),
       );
       await v53
         .locator(
-          '[data-hybrid-open="session"][data-occurrence-key="s1@2026-08-25"]',
+          '#eventPeriodContent [data-hybrid-open="session"][data-occurrence-key="s1@2026-08-25"]',
         )
         .click();
       assert.match(await panel(v53).innerText(), /Single Kayak Rental/);
@@ -1250,52 +1231,15 @@ try {
   await scenario(
     "Attention links reveal their exact native booking after unrelated event filters and dates",
     async (page) => {
-      const { r7 } = await getFrames(page);
-      const issues = (await queue(page)).issues.filter(
-        (item) => item.source === "r7",
-      );
-      assert(issues.length > 0);
-      for (const issue of issues) {
-        await r7.evaluate(() => {
-          Object.assign(UI, {
-            view: "evBoard",
-            evbDate: "2030-01-01",
-            evbVenue: "nonmatching-fixture-venue",
-            evbArea: "nonmatching-area",
-            evbType: "nonmatching-type",
-            evbOnly: "ready",
-            evbFind: "will-match-no-booking",
-            evbSel: null,
-          });
-          render();
-        });
-        await activate(page, issue.source, issue.action, issue.args);
-        const state = await r7.evaluate(() => ({
-          view: UI.view,
-          key: UI.evbSel,
-          date: UI.evbDate,
-          venue: UI.evbVenue,
-          find: UI.evbFind,
-          area: UI.evbArea,
-          type: UI.evbType,
-          only: UI.evbOnly,
-        }));
-        assert.equal(state.view, "evBoard");
-        assert.equal(state.key, issue.args.key);
-        assert.equal(state.date, issue.date);
-        const target = r7.locator(
-          `[data-act="evbSel"][data-key="${issue.args.key}"].sel`,
-        );
-        assert(
-          await target.isVisible(),
-          `Exact attention target ${issue.args.key} is visible rather than filtered out`,
-        );
-        assert.equal(state.find, "");
-        assert.equal(state.venue, "all");
-        assert.equal(state.area, "all");
-        assert.equal(state.type, "all");
-        assert.equal(state.only, "all");
-      }
+      const { v53 } = await getFrames(page);
+      const issue=(await queue(page)).issues.find(item=>item.id==='v53-public-s2');
+      assert(issue,"The primary event engine supplies the attention link");
+      await activate(page,'v53','events',{scope:'period',from:'2030-01-01',to:'2030-01-02',view:'list'});
+      await v53.evaluate(()=>{v49EventFilterSets.venue.clear();v49EventFilterSets.venue.add('nonmatching-fixture-venue');renderEvent();});
+      await activate(page,issue.source,issue.action,issue.args);
+      assert.match(await panel(v53).innerText(),/E-Foil Lesson/);
+      assert.match(await panel(v53).innerText(),/6 attendee places remaining/);
+      assert.equal(await v53.evaluate(()=>v44AssignCtx.id),'s2');
     },
   );
 
@@ -1310,17 +1254,8 @@ try {
         date: "2026-08-24",
       });
       const dayCalendar = await v53
-        .locator("#eventDayContent .v54-slot:not(.prelim)")
-        .evaluateAll((nodes) =>
-          nodes
-            .map((node) => {
-              const match = node
-                .getAttribute("onclick")
-                .match(/v54Select\('(public|private)','([^']+)'\)/);
-              return `${match[1]}:${match[2].split("@")[0]}`;
-            })
-            .sort(),
-        );
+        .locator("#eventDayContent .hybrid-period-occurrence")
+        .evaluateAll(nodes=>nodes.map(node=>`${node.dataset.family}:${node.dataset.occurrenceKey.split('@')[0]}`).sort());
       assert.equal(
         dayCalendar.length,
         8,
@@ -1360,7 +1295,7 @@ try {
       );
       await v53.locator('[data-hybrid-event-view="calendar"]').click();
       const rangeCalendar = await v53
-        .locator(".hybrid-period-occurrence")
+        .locator("#eventPeriodContent .hybrid-period-occurrence")
         .evaluateAll((nodes) =>
           nodes
             .map(
@@ -1388,7 +1323,7 @@ try {
         to: "2026-08-26",
       });
       const geometry = await v53
-        .locator(".hybrid-period-day")
+        .locator("#eventPeriodContent .hybrid-period-day")
         .evaluateAll((days) => {
           const rect = (node) => {
             const r = node.getBoundingClientRect();
@@ -1697,7 +1632,7 @@ try {
       assert(await page.locator('[data-readiness="loading"]').isVisible());
       await page
         .locator('[data-source-file="v53"]')
-        .setInputFiles(fileURLToPath(new URL("references/v53-v56.html", root)));
+        .setInputFiles(fileURLToPath(new URL("references/v53.html", root)));
       await page.waitForFunction(() => OptimoWorkspace.ready.v53);
       assert.equal((await queue(page)).loaded, 1);
       assert.equal((await queue(page)).clear, false);

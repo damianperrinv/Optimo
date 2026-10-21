@@ -2,8 +2,12 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {build,transform} from 'esbuild';
 const root=new URL('../',import.meta.url),read=path=>readFile(new URL(path,root),'utf8');
 const guidance={};
-for(const source of ['v53','r7']){const stem=source==='v53'?'v53-guidance':'r7-guidance';guidance[source]={css:await read('src/'+stem+'.css'),js:await read('src/booking-model.js')+'\n'+await read('src/'+stem+'.js')}}
-const sources={v53:await read('references/v53-v56.html'),r7:await read('references/r7.html')};
+for(const source of ['v53','r7']){
+ const stems=source==='v53'?['v53-guidance','v53-extensions','v53-resource-extensions']:['r7-guidance','r7-extensions'];
+ const optional=async path=>{try{return await read(path)}catch(error){if(error.code==='ENOENT')return '';throw error}};
+ guidance[source]={css:(await Promise.all(stems.map(stem=>optional('src/'+stem+'.css')))).join('\n'),js:await read('src/booking-model.js')+'\n'+await read('src/audit-bridge.js')+'\n'+(await Promise.all(stems.map(stem=>optional('src/'+stem+'.js')))).join('\n')};
+}
+const sources={v53:await read('references/v53.html'),r7:await read('references/r7.html')};
 const css=(await transform(await read('src/full-workspace.css'),{loader:'css',minify:true})).code;
 const js=(await build({entryPoints:[new URL('src/full-workspace.js',root).pathname],bundle:true,minify:true,write:false,format:'iife',target:'es2022'})).outputFiles[0].text;
 const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');

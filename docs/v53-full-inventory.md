@@ -1,3 +1,5 @@
+> Historical inventory: this document describes the earlier V56 upload. The active module now uses the re-uploaded V53 at `references/v53.html` (35 script tags). See the current requirements coverage and scenario review for this revision.
+
 # V53/V56 full capability inventory
 
 This audits the entire uploaded `prototypev56.html`, including its 37 sequential

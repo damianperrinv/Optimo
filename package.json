@@ -11,7 +11,8 @@
     "test": "node --test test/*.test.js",
     "test:browser": "node scripts/full-smoke.mjs",
     "build:simple": "node scripts/build.mjs",
-    "test:browser:simple": "OPTIMO_URL=http://127.0.0.1:5173/simple.html node scripts/smoke.mjs"
+    "test:browser:simple": "OPTIMO_URL=http://127.0.0.1:5173/simple.html node scripts/smoke.mjs",
+    "test:requirements": "node scripts/requirements-smoke.mjs"
   },
   "engines": {
     "node": ">=22"

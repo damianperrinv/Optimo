@@ -1,16 +1,14 @@
-# Optimo full operations workspace
+# Optimo operations workspace
 
-A feature-preserving hybrid using the uploaded V56 prototype, including its V53 event/resource workflows, and the R7 facility and planning prototype. The earlier reduced demo is superseded: advanced workflows remain available.
+The active hybrid uses the re-uploaded **prototypev53.html** for Events and Resources and **optimo-operations-r7.html** for Facilities. The V53 reference retains its 35 source script tags. Original source files remain unchanged; focused extensions add the missing operational features and share the r7 visual style.
 
-The source HTML under `references/` is unchanged. Additive adapters share the facilities theme, a consistent booking vocabulary, independent date/display controls, dated reassignment and an actionable operating dashboard. Advanced workflows remain in context.
+Events supports Calendar/List with Day, Week, Month and Custom date scopes. Existing assignment, capacity and package/price decision screens remain available. The extensions add patterned session copying, reviewed calendar moves, package/day/series-aware private allocations, persistent resource availability cases and actual local assignment/rescheduling commits.
 
-## Revised operating flow
+Facilities retains r7 planning, comparison, closure and review flows, with cross-date moves and linked allocation scope. Deferred work becomes an internal operations task. Active workflows do not require customer acceptance or create temporary holds with expiry; staff can prepare a notification or apply silently.
 
-Dashboard shows whether any bookings, draft plans or applied follow-ups need attention. Action centre keeps those three kinds of work separate and opens the exact next action. Public events, private bookings and blocks share one colour vocabulary; private recurrence, public confirmation, unpublished slots and operational readiness stay distinct.
+The dashboard and Action centre use current allocations, saved cases and follow-ups. A shared, persistent audit log records applied changes with scope and before/after values and supports JSON export.
 
-Events uses Calendar/List with space/time grouping inside Calendar. Facilities uses Day/Week independently of Calendar/List. Resource reassignment starts with a dated work period and retains those dates through review.
-
-## Develop
+## Develop and verify
 
 Requires Node.js 22 or later and npm.
 
@@ -20,40 +18,39 @@ npm ci --cache /workspace/.npm-cache
 npm run dev
 ```
 
-The server listens on port 5173; set `PORT` for another port. The root page loads both complete sources. Cloud tasks are already isolated: use the existing checkout and do not create a Git worktree unless explicitly asked.
+The server listens on port 5173; set `PORT` to change it. In another terminal:
 
 ```sh
 npm test
 npm run build
+npm run test:requirements
 npm run test:browser
 ```
 
-Browser checks require the development server. System Chromium is at `/usr/bin/chromium`; set `CHROMIUM_PATH` or `OPTIMO_URL` for other installations.
+Browser checks require the development server and Chromium. The default executable is `/usr/bin/chromium`; set `CHROMIUM_PATH` or `OPTIMO_URL` for another installation or server. Cloud work uses the existing isolated checkout.
 
 ## Review artifacts
 
-- `dist/optimo-full-hybrid.html` includes both original prototypes, guidance and workspace. It needs no server or network.
-- `dist/optimo-workspace-loader.html` includes the workspace and guidance. Open it and select the two original HTML files from your computer. Files are read locally, without uploading. This avoids redistributing the large source files through chat.
-
-Use Find a task for capacity, bulk/partial assignment, public/private rescheduling, notifications, roster import, resource absence/reassignment/venue transfer, multi-change planning, closures, comparison and follow-up.
-
-The earlier simple demo remains at `simple.html` for regression reference only. `npm run build:simple` and `npm run test:browser:simple` concern that superseded demo and do not validate the full workflows.
+- `dist/optimo-full-hybrid.html` bundles both active sources, extensions and workspace for local review without a server.
+- `dist/optimo-workspace-loader.html` loads the two original HTML files through local file pickers without uploading them.
+- `dist/requirements-results.json` contains the latest expectation-scenario results.
 
 ## Structure
 
-- `references/v53-v56.html`, `references/r7.html`: intact source prototypes.
-- `workspace.html`, `index.html`: common workspace shell.
-- `src/full-workspace.*`: dashboard, Action centre, task discovery, persistent contexts and reference loading.
-- `src/booking-model.js`, `src/workspace-model.js`: common booking semantics and current-state work queues.
-- `src/v53-guidance.*`, `src/r7-guidance.*`: additive source adapters and orientation.
-- `scripts/build-full.mjs`: bundled and local-file-loader exports.
-- `scripts/full-smoke.mjs`: full-source browser validation.
-- `docs/hybrid-design.md`: revised rationale and integration boundary.
-- `docs/scenario-review.md`: verification coverage and scenario results.
-- `docs/v53-full-inventory.md`, `docs/r7-full-inventory.md`: capability inventory.
+- `references/v53.html`, `references/r7.html`: unchanged active sources.
+- `references/v53-v56.html`: historical V56 reference; not the active Event/Resource engine.
+- `workspace.html`, `index.html`, `src/full-workspace.*`: workspace, dashboard, Action centre, task routing and audit interface.
+- `src/v53-guidance.*`, `src/v53-extensions.*`, `src/v53-resource-extensions.*`: V53 bridge and targeted operational additions.
+- `src/r7-guidance.*`, `src/r7-extensions.*`: facility presentation, moves, closure policies and internal follow-up work.
+- `src/booking-model.js`, `src/workspace-model.js`: shared booking vocabulary and work queues.
+- `src/audit-store.js`, `src/audit-bridge.js`: shared persistent audit and prototype permission bridge.
+- `scripts/build-full.mjs`, `scripts/requirements-smoke.mjs`, `scripts/full-smoke.mjs`: packaging and browser verification.
+- [Design and integration boundary](docs/hybrid-design.md), [requirements coverage](docs/requirements-coverage.md), [scenario review](docs/scenario-review.md).
 
-## Prototype behavior
+## Prototype boundary
 
-No advanced feature is deferred merely to make the UI look simpler. Original engines, actions and decision screens remain. Their sample data and state boundaries remain separate; this wrapper does not create a shared booking backend. Some original import, notification, commit and Booking Manager endpoints are simulations. See the design document for the shared-ID and commit adapter still required for integrated production behavior.
+Operational extensions persist changes in browser storage. The two source examples still have separate booking identifiers and engines; they are not a shared production backend. Roster workbook parsing, notification delivery and Booking Manager integrations remain external boundaries or explicitly simulated actions.
 
-No credentials or external services are required. The app does not send notifications or upload the supplied HTML files.
+A public session moved between facilities updates local allocations and records a simulated target timeslot/package transaction in the operation ledger. Production must create or map those records and transfer booking allocations atomically while preserving prices. The prototype does not create backend packages, send messages or collect payments. No credentials are required.
+
+The earlier reduced demo remains at `simple.html` for historical regression reference. Its `build:simple` and `test:browser:simple` commands do not validate the active hybrid.

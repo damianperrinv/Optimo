@@ -373,3 +373,18 @@ test('native facility board validation failures block review even without an ok 
   assert.equal(queue.blocked, 1);
   assert.equal(queue.clear, false);
 });
+
+test('persistent resource cases retain resolved history and prevent all-clear while work is outstanding',()=>{
+ const ready={v53:true,r7:true};
+ const v={resourceOperations:{cases:[{id:'ru1',resource:'Hassan',reason:'Sick leave',from:'2026-08-24T09:00',to:'2026-08-26T18:00',outstanding:['s1@2026-08-24']}]}};
+ const q=buildWorkQueue(v,{},ready);assert.equal(q.clear,false);assert.equal(q.openCases,1);assert.equal(q.cases[0].action,'resourceCase');assert.deepEqual(q.cases[0].args,{id:'ru1'});
+ v.resourceOperations.cases[0].outstanding=[];const resolved=buildWorkQueue(v,{},ready);assert.equal(resolved.clear,true);assert.equal(resolved.cases.length,1);assert.equal(resolved.cases[0].status,'Resolved');
+});
+test('V53 financial and details follow-ups remain actionable until completed',()=>{
+ const v={operations:{followUps:[{id:'f1',bookingRef:'BK-1',reason:'Waiver to collect',status:'open'},{id:'f2',bookingRef:'BK-2',reason:'Fee update',status:'completed'}]}};
+ const q=buildWorkQueue(v,{}, {v53:true,r7:true});assert.equal(q.followUps.length,1);assert.equal(q.followUps[0].source,'v53');assert.equal(q.followUps[0].action,'bookingFollowUp');assert.deepEqual(q.followUps[0].args,{id:'f1'});
+});
+test('internal facility allocation tasks use authoritative public-family metadata and exact resume links',()=>{
+ const r={facilityExtensions:{internalTasks:[{id:'t1',title:'Yoga replacement',status:'open',date:'2026-10-17'}]},workItems:[{id:'t1',family:'public'}]};
+ const q=buildWorkQueue({},r,{v53:true,r7:true});assert.equal(q.issues[0].family,'public');assert.equal(q.issues[0].action,'internalTask');assert.deepEqual(q.issues[0].args,{id:'t1'});
+});

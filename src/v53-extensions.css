@@ -1,0 +1,26 @@
+/* Focused operational forms share the facilities typography and spacing. */
+.ops-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:16px 0}
+.ops-field{display:flex;flex-direction:column;gap:6px;font-size:11px;font-weight:600;color:#58687e;margin:0;min-width:0}
+.ops-field input,.ops-field select,.ops-field textarea,.ops-supply-row select{padding:8px 10px;border:1px solid #ccd6e3;border-radius:6px;background:#fff;color:#334155;font:12px/1.4 Inter,"Segoe UI",sans-serif;min-width:0;max-width:100%}
+.ops-field input,.ops-field select:not([multiple]){min-height:36px}.ops-field textarea{resize:vertical}
+.ops-weekdays{display:flex;gap:18px;flex-wrap:wrap;padding:14px 16px;border:1px solid #dde5ef;border-radius:7px;font-size:12px;background:#fff}
+.ops-weekdays legend{font-size:11px;color:#64748b;font-weight:600;padding:0 5px}.ops-weekdays label{display:flex;gap:6px;align-items:center}
+.ops-copy-card,.ops-private-package{border:1px solid #dde5ef;background:#fff;border-radius:8px;margin:14px 0;overflow:hidden}
+.ops-copy-card h3,.ops-private-package h3{font-size:13px;margin:0;padding:13px 15px;color:#33465f;background:#f5f8fc;border-bottom:1px solid #e3e9f1}
+.ops-supply-row{display:grid;grid-template-columns:minmax(180px,1fr) minmax(210px,1fr) auto;gap:13px;align-items:center;padding:13px 15px;border-top:1px solid #edf1f7;font-size:12px}
+.ops-supply-row:first-of-type{border-top:0}.ops-supply-row small{display:block;color:#738298;font-size:11px;line-height:1.5;margin-top:4px}.ops-supply-row select{width:100%}
+.ops-move-calendar{border:1px solid #d8e2ef;border-radius:7px;overflow:auto;background:#fff;margin:16px 0;max-height:360px}
+.ops-move-grid{display:grid;grid-template-columns:64px repeat(7,minmax(120px,1fr));min-width:950px}
+.ops-move-grid>div{min-height:48px;padding:7px;border-right:1px solid #e4eaf3;border-bottom:1px solid #e4eaf3;font-size:11px}
+.ops-move-grid>.ops-calendar-date{position:sticky;top:0;z-index:2;background:#eef3f9;font-weight:600;min-height:36px}
+.ops-calendar-axis{background:#f5f8fc;color:#758398}.ops-move-grid>[data-ops-drop-date]{cursor:pointer}.ops-move-grid>[data-ops-drop-date]:hover{background:#f1f5ff}
+.ops-drag-session{border:1px solid #aac4fb;border-left:3px solid #2563eb;background:#edf4ff;color:#2153ae;padding:7px;border-radius:5px;cursor:grab;font-size:11px;font-weight:600;line-height:1.4}
+.ops-drag-session small{display:block;font-size:10px;font-weight:400;margin-top:3px}
+.ops-private-summary,.ops-private-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;color:#64748b;font-size:12px}
+.ops-private-toolbar{justify-content:space-between;padding:13px;background:#fff;border:1px solid #dde5ef;border-radius:7px}
+.ops-private-package>header{display:flex;justify-content:space-between;align-items:center;background:#f5f8fc;border-bottom:1px solid #e3e9f1;padding-right:15px}.ops-private-package>header h3{border:0}
+.ops-private-allocation{display:grid;grid-template-columns:130px 1fr auto auto;gap:12px;align-items:center;padding:15px;border-bottom:1px solid #edf1f7;font-size:12px}.ops-private-allocation:last-child{border:0}
+.ops-private-allocation>label{display:flex;gap:8px;align-items:center}.ops-private-allocation .chip{font-size:10px;margin:3px}.ops-case-list{display:grid;gap:12px;margin:18px 0}
+#opsError{margin:0 0 14px}.ops-supply-row .badge{font-size:10px}
+.hybrid-period-occurrence[draggable="true"]{cursor:grab}.hybrid-period-occurrence[draggable="true"]:active{cursor:grabbing}
+@media(max-width:720px){.ops-grid{grid-template-columns:1fr 1fr;gap:10px}.ops-grid>.ops-field:last-child:nth-child(3n){grid-column:1/-1}.ops-supply-row{grid-template-columns:1fr auto;padding:12px;gap:9px}.ops-supply-row select{grid-column:1/-1;grid-row:2}.ops-private-allocation{grid-template-columns:1fr 1fr;padding:12px}.ops-private-allocation>div{grid-column:1/-1;grid-row:2}.ops-private-toolbar{padding:11px}.ops-private-package>header{align-items:flex-start;flex-direction:column;padding:0 12px 9px}.ops-private-package>header h3{padding:12px 0 6px}.ops-weekdays{gap:13px}.ops-private-summary .badge{font-size:10px}#drawer .df:has([data-ops-action]){flex-wrap:wrap;gap:7px}}
