@@ -1,0 +1,23 @@
+{
+  "name": "optimo-hybrid",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A friendly hybrid prototype for Optimo event, resource and facility operations.",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs",
+    "build": "node scripts/build-full.mjs",
+    "test": "node --test test/*.test.js",
+    "test:browser": "node scripts/full-smoke.mjs",
+    "build:simple": "node scripts/build.mjs",
+    "test:browser:simple": "OPTIMO_URL=http://127.0.0.1:5173/simple.html node scripts/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "playwright": "1.58.2"
+  }
+}
